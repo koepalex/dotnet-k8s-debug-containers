@@ -1,5 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-azurelinux3.0 AS tooling
 
+RUN tdnf install -y gawk \
+    && tdnf clean all
+
 RUN mkdir -p /tools \
     && dotnet tool install --tool-path /tools dotnet-dump \
     && dotnet tool install --tool-path /tools dotnet-trace \
