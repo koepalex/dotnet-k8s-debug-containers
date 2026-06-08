@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0-azurelinux3.0 AS tooling
+
+RUN mkdir -p /tools \
+    && dotnet tool install --tool-path /tools dotnet-dump \
+    && dotnet tool install --tool-path /tools dotnet-trace \
+    && dotnet tool install --tool-path /tools dotnet-counters \
+    && dotnet tool install --tool-path /tools dotnet-gcdump \
+    && dotnet tool install --tool-path /tools dotnet-stack
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0-azurelinux3.0
+
+ENV PATH="/tools:${PATH}" \
+    DIAG_DIR=/diag \
+    TARGET_UID=1654
+
+COPY --from=tooling /tools /tools
+
+RUN mkdir -p /diag \
+    && chown 1654:0 /diag \
+    && chmod g=u /diag
+
+USER 1654
+WORKDIR /diag
+ENTRYPOINT ["/bin/sh"]

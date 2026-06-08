@@ -1,0 +1,32 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0-azurelinux3.0 AS tooling
+
+RUN mkdir -p /tools \
+    && dotnet tool install --tool-path /tools dotnet-dump \
+    && dotnet tool install --tool-path /tools dotnet-trace \
+    && dotnet tool install --tool-path /tools dotnet-counters \
+    && dotnet tool install --tool-path /tools dotnet-gcdump \
+    && dotnet tool install --tool-path /tools dotnet-stack
+
+ADD https://aka.ms/getvsdbgsh /tmp/getvsdbg.sh
+
+RUN chmod +x /tmp/getvsdbg.sh \
+    && mkdir -p /vsdbg \
+    && /tmp/getvsdbg.sh -v latest -l /vsdbg \
+    && rm /tmp/getvsdbg.sh
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0-azurelinux3.0
+
+ENV PATH="/tools:/vsdbg:${PATH}" \
+    DIAG_DIR=/diag \
+    TARGET_UID=1654
+
+COPY --from=tooling /tools /tools
+COPY --from=tooling /vsdbg /vsdbg
+
+RUN mkdir -p /diag \
+    && chown 1654:0 /diag \
+    && chmod g=u /diag
+
+USER 1654
+WORKDIR /diag
+ENTRYPOINT ["/bin/sh"]

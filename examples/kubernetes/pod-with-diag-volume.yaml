@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  shareProcessNamespace: true
+  securityContext:
+    runAsUser: 1654
+  containers:
+    - name: app
+      image: ghcr.io/OWNER/REPO/app:latest
+      env:
+        - name: DOTNET_DiagnosticPorts
+          value: /diag/dotnet-diagnostic.sock,suspend=n,listen
+      volumeMounts:
+        - name: diagnostics
+          mountPath: /diag
+  volumes:
+    - name: diagnostics
+      emptyDir: {}
