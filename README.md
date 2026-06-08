@@ -13,8 +13,8 @@ These images are intended for Kubernetes pods that run .NET 10 applications and 
 
 ## Images
 
-- `ghcr.io/OWNER/REPO/diag:latest`
-- `ghcr.io/OWNER/REPO/debug:latest`
+- `ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest`
+- `ghcr.io/koepalex/dotnet-k8s-debug-containers/debug:latest`
 
 ## Target Use Case
 
