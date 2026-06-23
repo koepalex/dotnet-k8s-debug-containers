@@ -15,6 +15,13 @@ spec:
       volumeMounts:
         - name: diagnostics
           mountPath: /diag
+    - name: diag
+      image: ghcr.io/koepalex/dotnet-k8s-debug-containers/diag/diag:latest
+      stdin: true
+      tty: true
+      volumeMounts:
+        - name: diagnostics
+          mountPath: /diag
   volumes:
     - name: diagnostics
       emptyDir: {}
