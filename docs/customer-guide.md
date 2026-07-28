@@ -13,7 +13,7 @@ The application container stays focused on running the app.
 - No shell is required in the app container
 - The diagnostics or debugger tools run in a separate container
 - Access is limited to what Kubernetes allows for that extra container and the pod it joins
-- The shared `/diag` volume is only used for diagnostic sockets and collected artifacts
+- The Pod-scoped `/diag` volume is mounted only into the troubleshooting container
 
 This design keeps operational tooling out of the main app image while still allowing controlled troubleshooting access.
 
@@ -27,12 +27,12 @@ This repository uses UID `1654` and recommends that the .NET app container also 
 
 The target app container does not need `/bin/sh`, package managers, or the .NET SDK.
 
-The diagnostics container provides the tooling and interacts with the app process through shared pod namespaces and the shared diagnostics directory.
+The diagnostics container provides the tooling and interacts with the app
+process through shared Pod namespaces.
 
-The troubleshooting images set `TMPDIR=/diag`. The session scripts locate the
-target process's default Unix diagnostic socket through `/proc` and link it
-under `/diag`, allowing the standard `dotnet-*` tools to discover it without a
-per-command `--diagnostic-port` argument.
+The session scripts locate the target process's default Unix diagnostic socket
+through `/proc` and link it under `/diag`, allowing the standard `dotnet-*`
+tools to discover it automatically.
 
 ## Debug Container Separation
 
@@ -48,7 +48,7 @@ Use `debug` only when interactive debugging is actually needed.
 - Live breakpoint debugging can pause the application process
 - Hardened seccomp or AppArmor profiles may block diagnostics or debugger operations
 - Different UIDs between the target process and the troubleshooting container may prevent attachment
-- Read-only filesystems still need a writable shared `/diag` volume for sockets and collected artifacts
+- The Pod must declare a writable diagnostics `emptyDir` with an appropriate `fsGroup`
 
 ## Production Recommendation
 

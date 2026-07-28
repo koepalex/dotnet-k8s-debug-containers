@@ -1,24 +1,22 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: my-app
+  name: dotnet-diag-sample
 spec:
   shareProcessNamespace: true
   securityContext:
-    runAsUser: 1654
+    fsGroup: 1654
+    fsGroupChangePolicy: OnRootMismatch
   containers:
-    - name: app
-      image: ghcr.io/OWNER/REPO/app:latest
-      volumeMounts:
-        - name: diagnostics
-          mountPath: /diag
-    - name: diag
-      image: ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest
-      stdin: true
-      tty: true
-      volumeMounts:
-        - name: diagnostics
-          mountPath: /diag
+    - name: sample-app
+      image: ghcr.io/owner/repository/sample-app:latest
+      securityContext:
+        runAsUser: 1654
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
   volumes:
     - name: diagnostics
       emptyDir: {}

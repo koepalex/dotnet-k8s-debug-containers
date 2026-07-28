@@ -14,15 +14,13 @@ Start the ephemeral debug container with the same stable name used by
   -NoAttach
 ```
 
-The script creates the container atomically with the shared `/diag` volume
-mount. `-NoAttach` leaves its shell running for VS Code; an ephemeral container
-cannot be restarted after its shell exits.
+The script creates the container atomically with the Pod's diagnostics volume
+mounted at `/diag`. `-NoAttach` leaves its shell running for VS Code; an
+ephemeral container cannot be restarted after its shell exits.
 
-The debug image sets `TMPDIR=/diag` for the bundled `dotnet-*` tools. `vsdbg`
-itself attaches through the shared process namespace rather than selecting the
-runtime through that diagnostic socket. The debug script requests
-root execution, `SYS_PTRACE`, and an unconfined seccomp profile; the cluster's
-Pod Security and AppArmor policies must permit those settings.
+`vsdbg` attaches through the shared process namespace. The debug script
+requests root execution, `SYS_PTRACE`, and an unconfined seccomp profile; the
+cluster's Pod Security and AppArmor policies must permit those settings.
 
 Copy this into `.vscode/launch.json` and adjust names as needed:
 

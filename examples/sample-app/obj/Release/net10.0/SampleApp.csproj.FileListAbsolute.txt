@@ -1,0 +1,15 @@
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\bin\Release\net10.0\SampleApp.exe
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\bin\Release\net10.0\SampleApp.deps.json
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\bin\Release\net10.0\SampleApp.runtimeconfig.json
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\bin\Release\net10.0\SampleApp.dll
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\bin\Release\net10.0\SampleApp.pdb
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.GeneratedMSBuildEditorConfig.editorconfig
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.AssemblyInfoInputs.cache
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.AssemblyInfo.cs
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.csproj.CoreCompileInputs.cache
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.sourcelink.json
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.dll
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\refint\SampleApp.dll
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.pdb
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\SampleApp.genruntimeconfig.cache
+C:\ode\_priv\dotnet-k8s-debug-containers\examples\sample-app\obj\Release\net10.0\ref\SampleApp.dll

@@ -1,28 +1,28 @@
 # Ephemeral Diagnostics Examples
 
-These examples assume the pod already follows the shared diagnostics volume pattern from `examples/kubernetes/pod-with-diag-volume.yaml`.
+These examples assume the Pod declares the tooling-only diagnostics volume
+shown in `examples/kubernetes/pod-with-diag-volume.yaml`.
 
 ## Start A Diagnostics Session
 
-`kubectl debug` does not inherit the target container's volume mounts, and an
-ephemeral container cannot be patched after creation. Use the helper script to
-create the container with the `/diag` mount atomically and attach to it:
+`kubectl debug` does not add Pod volume mounts to an ephemeral container, and
+an ephemeral container cannot be patched after creation. Use the helper script
+to create the container with the `/diag` mount atomically and attach to it:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
-  -Namespace default
+  -Namespace default `
+  -ContainerName dotnet-diag
 ```
 
 The script defaults to
 `ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest`. Override `-Image`,
 `-VolumeName`, or `-MountPath` when the Pod uses different values.
 
-The published images and generated ephemeral containers set `TMPDIR` to the
-shared mount path. After the container starts, the script finds the target
-runtime's default socket through `/proc` and exposes it under that path. The
-target application does not need to change its own `TMPDIR`.
+After the container starts, the script finds the target runtime's default
+socket through `/proc` and exposes it under `/diag`.
 
 To create and prepare the container without opening an interactive shell:
 
@@ -31,6 +31,7 @@ To create and prepare the container without opening an interactive shell:
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
+  -ContainerName dotnet-diag `
   -NoAttach
 ```
 
@@ -92,7 +93,7 @@ dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 ## Copy Artifacts Out Of The Pod
 
 ```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c app
-kubectl cp my-app:/diag/app.dmp ./app.dmp -c app
-kubectl cp my-app:/diag/app.gcdump ./app.gcdump -c app
+kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c dotnet-diag
+kubectl cp my-app:/diag/app.dmp ./app.dmp -c dotnet-diag
+kubectl cp my-app:/diag/app.gcdump ./app.gcdump -c dotnet-diag
 ```

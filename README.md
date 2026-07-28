@@ -29,28 +29,23 @@ Configure the application pod so an ephemeral diagnostics container can access t
 
 ### Prerequisites
 
-- Set `shareProcessNamespace: true` on the pod
-  - If deploying after pod creation, this causes a rolling restart:
-  ```pwsh
-  kubectl patch deployment mypod `
-    -n mynamespace `
-    --type='strategic' `
-    -p='{"spec":{"template":{"spec":{"shareProcessNamespace":true}}}}
-  ```
-- Run the app container as UID `1654` (matches the diagnostics container user)
-- Mount a shared `emptyDir` volume at `/diag` in the app container
+- Set `shareProcessNamespace: true`.
+- Run the app as UID `1654`, matching the `diag` image.
+- Set Pod `fsGroup: 1654`.
+- Declare a writable `emptyDir` volume named `diagnostics`.
+- Leave .NET diagnostics enabled (the runtime default).
 
-Both published troubleshooting images set `TMPDIR=/diag`. The session scripts
-locate the target runtime's default diagnostic sockets through the shared
-process namespace and expose them under `/diag`, allowing the standard
-`dotnet-*` tools to discover the target automatically. The application can keep
-its default `/tmp` socket location or use a custom `TMPDIR`.
+The session scripts locate the target runtime's default diagnostic sockets
+through the shared process namespace and expose them under `/diag`, allowing
+the standard `dotnet-*` tools to discover the target automatically. The
+diagnostics volume is mounted only into the ephemeral container; the
+application container does not mount `/diag`.
 
 ### Start an Ephemeral Diagnostics Session
 
-`kubectl debug` does not copy volume mounts from the target container. The
-ephemeral container must therefore be created with the diagnostics volume mount
-already present; Kubernetes does not allow adding it after creation.
+`kubectl debug` does not add Pod volume mounts to an ephemeral container. The
+helper creates the container with the diagnostics volume mount already present;
+Kubernetes does not allow adding it after creation.
 
 Use the PowerShell helper to validate the Pod, create the fully configured
 ephemeral container through the `ephemeralcontainers` subresource, wait for it,
@@ -60,7 +55,8 @@ and attach an interactive shell:
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
-  -Namespace default
+  -Namespace default `
+  -ContainerName dotnet-diag
 ```
 
 Use the corresponding helper when the session also needs `vsdbg`:
@@ -84,16 +80,30 @@ The script requires permission to read Pods, update
 `pods/ephemeralcontainers`, and create `pods/exec` requests. Interactive
 attachment additionally requires create permission on `pods/attach`; it is not
 needed with `-NoAttach`. The script fails before creating the container when
-the target container, shared `emptyDir` volume, or volume mount is missing.
+the target container or Pod-level `emptyDir` volume is missing.
 After startup it verifies that at least one accessible default .NET diagnostic
-socket can be prepared. Use `-SkipSocketDiscoveryValidation` only when you
-intentionally rely on an explicit `--diagnostic-port` workflow.
+socket can be prepared.
 
 Use `-WhatIf` to inspect the generated Pod payload without adding the
 ephemeral container. Use `-NoAttach` to create and prepare the container without
 opening an interactive shell.
 
 The sample manifest in `examples/kubernetes/pod-with-diag-volume.yaml` shows the recommended static pod layout.
+
+### Verified Sample Application
+
+`examples/sample-app` contains the minimal .NET 10 target image used to verify
+the diagnostics and debugger workflows:
+
+```sh
+docker build \
+  -f examples/sample-app/Dockerfile \
+  -t dotnet-k8s-sample:local \
+  examples/sample-app
+```
+
+Publish that image to a registry accessible by the cluster and use it as the
+`app` image in `examples/kubernetes/pod-with-diag-volume.yaml`.
 
 ## Diag vs Debug
 
@@ -114,7 +124,8 @@ Start and attach an ephemeral diagnostics container:
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
-  -Namespace default
+  -Namespace default `
+  -ContainerName dotnet-diag
 ```
 
 Start a VS Code-capable debug container with a stable name:
@@ -155,7 +166,7 @@ dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 Copy artifacts to the local machine:
 
 ```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c app
+kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c dotnet-diag
 ```
 
 More command examples are in `examples/kubernetes/kubectl-debug.md`.

@@ -16,7 +16,9 @@ ENV PATH="/tools:${PATH}" \
 
 COPY --from=tooling /tools /tools
 
-RUN mkdir -p /diag \
+RUN tdnf install -y tar \
+    && tdnf clean all \
+    && mkdir -p /diag \
     && chown 1654:0 /diag \
     && chmod g=u /diag
 

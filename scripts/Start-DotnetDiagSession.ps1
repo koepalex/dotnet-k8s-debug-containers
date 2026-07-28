@@ -183,20 +183,6 @@ if ($diagnosticsVolume.PSObject.Properties.Name -notcontains 'emptyDir') {
     throw "Pod volume '$VolumeName' must be an emptyDir volume so the diagnostics container can create the Unix socket and collected artifacts."
 }
 
-$targetVolumeMounts = @(Get-PropertyValue -InputObject $target -Name 'volumeMounts' | Where-Object {
-        $_.name -eq $VolumeName -and $_.mountPath -eq $MountPath
-    })
-if ($targetVolumeMounts.Count -ne 1) {
-    throw "Target container '$TargetContainer' must mount volume '$VolumeName' at '$MountPath'."
-}
-
-$targetVolumeMount = $targetVolumeMounts[0]
-$targetSubPath = Get-PropertyValue -InputObject $targetVolumeMount -Name 'subPath'
-$targetSubPathExpression = Get-PropertyValue -InputObject $targetVolumeMount -Name 'subPathExpr'
-if ($targetSubPathExpression) {
-    throw "Target container '$TargetContainer' uses subPathExpr for volume '$VolumeName'. Use a fixed subPath or mount the volume root so the ephemeral container can share the same directory."
-}
-
 $existingEphemeralContainers = @(Get-PropertyValue -InputObject $podObject.spec -Name 'ephemeralContainers' | Where-Object {
         $null -ne $_
     })
@@ -218,9 +204,6 @@ if (@($existingEphemeralContainers | Where-Object { $_.name -eq $ContainerName }
 $ephemeralVolumeMount = [ordered]@{
     name      = $VolumeName
     mountPath = $MountPath
-}
-if ($targetSubPath) {
-    $ephemeralVolumeMount.subPath = $targetSubPath
 }
 
 $ephemeralContainer = [ordered]@{
