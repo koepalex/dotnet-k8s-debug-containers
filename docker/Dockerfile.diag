@@ -11,6 +11,7 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0-azurelinux3.0
 
 ENV PATH="/tools:${PATH}" \
     DIAG_DIR=/diag \
+    TMPDIR=/diag \
     TARGET_UID=1654
 
 COPY --from=tooling /tools /tools

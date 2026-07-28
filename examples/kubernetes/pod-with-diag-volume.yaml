@@ -10,13 +10,13 @@ spec:
     - name: app
       image: ghcr.io/OWNER/REPO/app:latest
       env:
-        - name: DOTNET_DiagnosticPorts
-          value: /diag/dotnet-diagnostic.sock,suspend=n,listen
+        - name: TMPDIR
+          value: /diag
       volumeMounts:
         - name: diagnostics
           mountPath: /diag
     - name: diag
-      image: ghcr.io/koepalex/dotnet-k8s-debug-containers/diag/diag:latest
+      image: ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest
       stdin: true
       tty: true
       volumeMounts:

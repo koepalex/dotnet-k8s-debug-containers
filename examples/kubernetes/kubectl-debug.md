@@ -1,49 +1,91 @@
-# kubectl debug Examples
+# Ephemeral Diagnostics Examples
 
 These examples assume the pod already follows the shared diagnostics volume pattern from `examples/kubernetes/pod-with-diag-volume.yaml`.
 
-## Start A Diag Ephemeral Container
+## Start A Diagnostics Session
 
-```sh
-kubectl debug pod/my-app -it --target app --image ghcr.io/OWNER/REPO/diag:latest --container dotnet-diag -- /bin/sh
+`kubectl debug` does not inherit the target container's volume mounts, and an
+ephemeral container cannot be patched after creation. Use the helper script to
+create the container with the `/diag` mount atomically and attach to it:
+
+```pwsh
+.\scripts\Start-DotnetDiagSession.ps1 `
+  -Pod my-app `
+  -TargetContainer app `
+  -Namespace default
 ```
 
-## Start A Debug Ephemeral Container
+The script defaults to
+`ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest`. Override `-Image`,
+`-VolumeName`, `-MountPath`, or `-DiagnosticSocket` when the Pod uses different
+values.
 
-```sh
-kubectl debug pod/my-app -it --target app --image ghcr.io/OWNER/REPO/debug:latest --container dotnet-debug -- /bin/sh
+The published images and generated ephemeral containers set `TMPDIR` to the
+shared mount path. The target application must set the same `TMPDIR` value so
+the default .NET diagnostic socket is automatically discoverable.
+
+If `TMPDIR` or the backward-compatible `DOTNET_DiagnosticPorts` setting is
+supplied through `envFrom` or admission injection, bypass only that preflight
+check:
+
+```pwsh
+.\scripts\Start-DotnetDiagSession.ps1 `
+  -Pod my-app `
+  -TargetContainer app `
+  -Namespace default `
+  -SkipSocketDiscoveryValidation
 ```
+
+## Start A Debug Session
+
+Use the debug helper when the ephemeral container also needs `vsdbg`. Set a
+stable name when VS Code will reference the container from `launch.json`:
+
+```pwsh
+.\scripts\Start-DotnetDebugSession.ps1 `
+  -Pod my-app `
+  -TargetContainer app `
+  -Namespace default `
+  -ContainerName dotnet-debug
+```
+
+Keep the attached shell running while VS Code launches `/vsdbg/vsdbg` through
+`kubectl exec`. The debug image also contains all diagnostic tools shown below.
 
 ## Collect Artifacts
 
-List visible .NET processes:
+The script prints the generated ephemeral-container name before attachment.
+With a shared `TMPDIR`, the tools discover the runtime's default socket
+automatically.
+
+List .NET processes:
 
 ```sh
-kubectl exec -it my-app -c dotnet-diag -- dotnet-counters ps
+dotnet-trace ps
 ```
 
-Collect counters from the shared diagnostic socket:
+Collect counters:
 
 ```sh
-kubectl exec -it my-app -c dotnet-diag -- dotnet-counters monitor --diagnostic-port /diag/dotnet-diagnostic.sock System.Runtime
+dotnet-counters monitor --process-id <pid> System.Runtime
 ```
 
 Collect a trace:
 
 ```sh
-kubectl exec -it my-app -c dotnet-diag -- dotnet-trace collect --diagnostic-port /diag/dotnet-diagnostic.sock --output /diag/app.nettrace
+dotnet-trace collect --process-id <pid> --output /diag/app.nettrace
 ```
 
 Collect a dump:
 
 ```sh
-kubectl exec -it my-app -c dotnet-diag -- dotnet-dump collect --diagnostic-port /diag/dotnet-diagnostic.sock --output /diag/app.dmp
+dotnet-dump collect --process-id <pid> --output /diag/app.dmp
 ```
 
 Collect a GC dump:
 
 ```sh
-kubectl exec -it my-app -c dotnet-diag -- dotnet-gcdump collect --diagnostic-port /diag/dotnet-diagnostic.sock --output /diag/app.gcdump
+dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 ```
 
 ## Copy Artifacts Out Of The Pod

@@ -2,6 +2,27 @@
 
 The `debug` image includes `vsdbg` so VS Code can attach through `kubectl exec` without requiring any shell or debugger tooling in the application container.
 
+Start the ephemeral debug container with the same stable name used by
+`launch.json`:
+
+```pwsh
+.\scripts\Start-DotnetDebugSession.ps1 `
+  -Pod my-app `
+  -TargetContainer app `
+  -Namespace default `
+  -ContainerName dotnet-debug
+```
+
+Keep this attached shell running. The script creates the container atomically
+with the shared `/diag` volume mount; exiting the shell terminates the
+ephemeral container, which Kubernetes cannot restart.
+
+The debug image sets `TMPDIR=/diag` for the bundled `dotnet-*` tools. `vsdbg`
+itself attaches through the shared process namespace rather than selecting the
+runtime through that diagnostic socket. The debug script requests
+`SYS_PTRACE`; the cluster's Pod Security, seccomp, and AppArmor policies must
+permit it.
+
 Copy this into `.vscode/launch.json` and adjust names as needed:
 
 ```json
@@ -39,4 +60,5 @@ Copy this into `.vscode/launch.json` and adjust names as needed:
 - Replace `my-app` with the target pod name
 - Replace `dotnet-debug` if you use a different ephemeral container name
 - If you use namespaces, add `-n` and the namespace to `pipeArgs`
+- The caller needs create permission on the `pods/exec` subresource
 - Keep the app sources mapped from `/app` to `${workspaceFolder}` so breakpoints resolve correctly

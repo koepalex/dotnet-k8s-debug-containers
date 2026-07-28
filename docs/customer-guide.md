@@ -29,6 +29,11 @@ The target app container does not need `/bin/sh`, package managers, or the .NET 
 
 The diagnostics container provides the tooling and interacts with the app process through shared pod namespaces and the shared diagnostics directory.
 
+Set `TMPDIR=/diag` on the application container. The troubleshooting images use
+the same value, allowing the standard `dotnet-*` tools to discover the
+runtime's default Unix diagnostic socket without a per-command
+`--diagnostic-port` argument.
+
 ## Debug Container Separation
 
 The `debug` image is intentionally separate from the app container.
