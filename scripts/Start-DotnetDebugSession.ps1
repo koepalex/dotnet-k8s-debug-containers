@@ -24,9 +24,6 @@ param(
     [string]$MountPath = '/diag',
 
     [ValidateNotNullOrEmpty()]
-    [string]$DiagnosticSocket = '/diag/dotnet-diagnostic.sock',
-
-    [ValidateNotNullOrEmpty()]
     [string]$Shell = '/bin/sh',
 
     [ValidateRange(1, 600)]
@@ -34,8 +31,12 @@ param(
 
     [string[]]$AddCapability = @('SYS_PTRACE'),
 
+    [switch]$RunAsRoot = $true,
+
     [Alias('SkipDiagnosticPortValidation')]
-    [switch]$SkipSocketDiscoveryValidation
+    [switch]$SkipSocketDiscoveryValidation,
+
+    [switch]$NoAttach
 )
 
 Set-StrictMode -Version Latest
@@ -49,11 +50,12 @@ $invokeParameters = @{
     ContainerNamePrefix          = 'dotnet-debug'
     VolumeName                   = $VolumeName
     MountPath                    = $MountPath
-    DiagnosticSocket             = $DiagnosticSocket
     Shell                        = $Shell
     StartupTimeoutSeconds        = $StartupTimeoutSeconds
     AddCapability                = $AddCapability
+    RunAsRoot                    = $RunAsRoot
     SkipSocketDiscoveryValidation = $SkipSocketDiscoveryValidation
+    NoAttach                     = $NoAttach
 }
 
 if ($PSBoundParameters.ContainsKey('ContainerName')) {

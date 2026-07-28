@@ -17,23 +17,21 @@ create the container with the `/diag` mount atomically and attach to it:
 
 The script defaults to
 `ghcr.io/koepalex/dotnet-k8s-debug-containers/diag:latest`. Override `-Image`,
-`-VolumeName`, `-MountPath`, or `-DiagnosticSocket` when the Pod uses different
-values.
+`-VolumeName`, or `-MountPath` when the Pod uses different values.
 
 The published images and generated ephemeral containers set `TMPDIR` to the
-shared mount path. The target application must set the same `TMPDIR` value so
-the default .NET diagnostic socket is automatically discoverable.
+shared mount path. After the container starts, the script finds the target
+runtime's default socket through `/proc` and exposes it under that path. The
+target application does not need to change its own `TMPDIR`.
 
-If `TMPDIR` or the backward-compatible `DOTNET_DiagnosticPorts` setting is
-supplied through `envFrom` or admission injection, bypass only that preflight
-check:
+To create and prepare the container without opening an interactive shell:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -SkipSocketDiscoveryValidation
+  -NoAttach
 ```
 
 ## Start A Debug Session
@@ -46,17 +44,20 @@ stable name when VS Code will reference the container from `launch.json`:
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-debug
+  -ContainerName dotnet-debug `
+  -NoAttach
 ```
 
-Keep the attached shell running while VS Code launches `/vsdbg/vsdbg` through
-`kubectl exec`. The debug image also contains all diagnostic tools shown below.
+`-NoAttach` leaves the container shell running while VS Code launches
+`/vsdbg/vsdbg` through `kubectl exec`. The debug image also contains all
+diagnostic tools shown below. It runs as root and requests `SYS_PTRACE` with an
+unconfined seccomp profile; cluster security policy must allow these settings.
 
 ## Collect Artifacts
 
 The script prints the generated ephemeral-container name before attachment.
-With a shared `TMPDIR`, the tools discover the runtime's default socket
-automatically.
+The session script prepares the target's default socket so the tools can
+discover it automatically.
 
 List .NET processes:
 

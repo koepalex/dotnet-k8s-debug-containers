@@ -28,9 +28,6 @@ param(
     [string]$MountPath = '/diag',
 
     [ValidateNotNullOrEmpty()]
-    [string]$DiagnosticSocket = '/diag/dotnet-diagnostic.sock',
-
-    [ValidateNotNullOrEmpty()]
     [string]$Shell = '/bin/sh',
 
     [ValidateRange(1, 600)]
@@ -38,8 +35,12 @@ param(
 
     [string[]]$AddCapability = @(),
 
+    [switch]$RunAsRoot,
+
     [Alias('SkipDiagnosticPortValidation')]
-    [switch]$SkipSocketDiscoveryValidation
+    [switch]$SkipSocketDiscoveryValidation,
+
+    [switch]$NoAttach
 )
 
 Set-StrictMode -Version Latest
@@ -153,7 +154,6 @@ if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {
 }
 
 $MountPath = ConvertTo-NormalizedContainerPath -Path $MountPath -ParameterName 'MountPath'
-$DiagnosticSocket = ConvertTo-NormalizedContainerPath -Path $DiagnosticSocket -ParameterName 'DiagnosticSocket'
 if ($MountPath -eq '/') {
     throw 'MountPath cannot be the container root because the emptyDir mount would hide the diagnostics image filesystem.'
 }
@@ -197,45 +197,6 @@ if ($targetSubPathExpression) {
     throw "Target container '$TargetContainer' uses subPathExpr for volume '$VolumeName'. Use a fixed subPath or mount the volume root so the ephemeral container can share the same directory."
 }
 
-if (-not $SkipSocketDiscoveryValidation) {
-    $targetEnvironment = @(Get-PropertyValue -InputObject $target -Name 'env' | Where-Object {
-            $null -ne $_
-        })
-    $tempDirectoryVariables = @($targetEnvironment | Where-Object {
-            $_.name -eq 'TMPDIR'
-        })
-    $tempDirectoryValue = if ($tempDirectoryVariables.Count -eq 1) {
-        Get-PropertyValue -InputObject $tempDirectoryVariables[0] -Name 'value'
-    }
-    else {
-        $null
-    }
-
-    $usesSharedTempDirectory = $tempDirectoryValue -ceq $MountPath
-
-    $diagnosticPortVariables = @($targetEnvironment | Where-Object {
-            $_.name -eq 'DOTNET_DiagnosticPorts'
-        })
-    $diagnosticPortValue = if ($diagnosticPortVariables.Count -eq 1) {
-        Get-PropertyValue -InputObject $diagnosticPortVariables[0] -Name 'value'
-    }
-    else {
-        $null
-    }
-
-    $usesCustomDiagnosticPort = $false
-    if ($diagnosticPortValue -and $DiagnosticSocket.StartsWith("$MountPath/", [StringComparison]::Ordinal)) {
-        $diagnosticPortEntries = @($diagnosticPortValue -split ';')
-        $usesCustomDiagnosticPort = @($diagnosticPortEntries | Where-Object {
-                $_ -ceq "$DiagnosticSocket,connect,nosuspend"
-            }).Count -gt 0
-    }
-
-    if (-not $usesSharedTempDirectory -and -not $usesCustomDiagnosticPort) {
-        throw "Target container '$TargetContainer' must directly set TMPDIR='$MountPath' for automatic socket discovery, or DOTNET_DiagnosticPorts='$DiagnosticSocket,connect,nosuspend' for explicit-port mode. If configuration is supplied through envFrom or admission injection, rerun with -SkipSocketDiscoveryValidation."
-    }
-}
-
 $existingEphemeralContainers = @(Get-PropertyValue -InputObject $podObject.spec -Name 'ephemeralContainers' | Where-Object {
         $null -ne $_
     })
@@ -277,12 +238,25 @@ $ephemeralContainer = [ordered]@{
     )
     volumeMounts        = @($ephemeralVolumeMount)
 }
-if ($AddCapability.Count -gt 0) {
-    $ephemeralContainer.securityContext = [ordered]@{
-        capabilities = [ordered]@{
+if ($AddCapability.Count -gt 0 -or $RunAsRoot) {
+    $securityContext = [ordered]@{}
+
+    if ($RunAsRoot) {
+        $securityContext.runAsUser = 0
+        $securityContext.runAsNonRoot = $false
+        $securityContext.allowPrivilegeEscalation = $true
+        $securityContext.seccompProfile = [ordered]@{
+            type = 'Unconfined'
+        }
+    }
+
+    if ($AddCapability.Count -gt 0) {
+        $securityContext.capabilities = [ordered]@{
             add = @($AddCapability)
         }
     }
+
+    $ephemeralContainer.securityContext = $securityContext
 }
 
 $updatedEphemeralContainers = @($existingEphemeralContainers) + @($ephemeralContainer)
@@ -348,9 +322,90 @@ if (-not $containerStatus -or -not (Get-PropertyValue -InputObject (Get-Property
     throw "Timed out after $StartupTimeoutSeconds seconds waiting for ephemeral container '$ContainerName' to start."
 }
 
+$socketBridgeScript = @'
+set -eu
+shared_dir=$1
+found=0
+
+for process_dir in /proc/[0-9]*; do
+  [ -r "$process_dir/environ" ] || continue
+
+  target_tmp=/tmp
+  tmp_entry=$({ tr '\000' '\n' < "$process_dir/environ"; } 2>/dev/null | grep -m 1 '^TMPDIR=' || true)
+  if [ -n "$tmp_entry" ]; then
+    target_tmp=${tmp_entry#TMPDIR=}
+  fi
+
+  case "$target_tmp" in
+    /*) ;;
+    *) target_tmp=/tmp ;;
+  esac
+
+  for socket in "$process_dir/root$target_tmp"/dotnet-diagnostic-*-socket; do
+    [ -S "$socket" ] || continue
+
+    name=${socket##*/}
+    destination="$shared_dir/$name"
+
+    if [ -L "$destination" ] && [ ! -e "$destination" ]; then
+      rm -f "$destination"
+    fi
+
+    if [ ! -e "$destination" ] && [ ! -L "$destination" ]; then
+      ln -s "$socket" "$destination"
+    fi
+
+    if [ -S "$destination" ]; then
+      found=1
+    fi
+  done
+done
+
+if [ "$found" -eq 0 ]; then
+  echo "No accessible .NET default diagnostic sockets were found." >&2
+  exit 42
+fi
+
+echo "$found"
+'@
+$socketBridgeScript = $socketBridgeScript.Replace("`r`n", "`n")
+
+Write-Host 'Preparing .NET diagnostic socket discovery...'
+try {
+    Invoke-Kubectl -Arguments @(
+        'exec',
+        "pod/$Pod",
+        '--namespace',
+        $Namespace,
+        '--container',
+        $ContainerName,
+        '--',
+        $Shell,
+        '-c',
+        $socketBridgeScript,
+        '--',
+        $MountPath
+    ) | Out-Null
+    Write-Host 'Prepared .NET diagnostic socket discovery.'
+}
+catch {
+    if (-not $SkipSocketDiscoveryValidation) {
+        throw "Ephemeral container '$ContainerName' is running, but .NET socket discovery could not be prepared. Ensure the target process has diagnostics enabled and runs as the same UID. $($_.Exception.Message)"
+    }
+
+    Write-Warning "Socket discovery could not be prepared: $($_.Exception.Message)"
+}
+
 $execCommand = "kubectl exec -it --namespace $Namespace pod/$Pod --container $ContainerName -- $Shell"
+$processCommand = "kubectl exec --namespace $Namespace pod/$Pod --container $ContainerName -- /tools/dotnet-trace ps"
 Write-Host "Ephemeral container '$ContainerName' is running."
 Write-Host "Reconnect later with: $execCommand"
+Write-Host "List .NET processes with: $processCommand"
+
+if ($NoAttach) {
+    return
+}
+
 Write-Host "Attaching interactive session..."
 
 & kubectl attach "pod/$Pod" --namespace $Namespace --container $ContainerName --stdin --tty

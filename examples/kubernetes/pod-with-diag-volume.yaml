@@ -9,9 +9,6 @@ spec:
   containers:
     - name: app
       image: ghcr.io/OWNER/REPO/app:latest
-      env:
-        - name: TMPDIR
-          value: /diag
       volumeMounts:
         - name: diagnostics
           mountPath: /diag

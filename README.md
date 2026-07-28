@@ -39,13 +39,12 @@ Configure the application pod so an ephemeral diagnostics container can access t
   ```
 - Run the app container as UID `1654` (matches the diagnostics container user)
 - Mount a shared `emptyDir` volume at `/diag` in the app container
-- Set `TMPDIR=/diag` on the app container
 
-Both published troubleshooting images already set `TMPDIR=/diag`. When the app
-container uses the same value and shares the volume, the runtime's default
-diagnostic socket is created under `/diag` and the `dotnet-*` tools can discover
-it automatically. Setting the variable only on the troubleshooting image is
-not sufficient; the target .NET runtime must use it too.
+Both published troubleshooting images set `TMPDIR=/diag`. The session scripts
+locate the target runtime's default diagnostic sockets through the shared
+process namespace and expose them under `/diag`, allowing the standard
+`dotnet-*` tools to discover the target automatically. The application can keep
+its default `/tmp` socket location or use a custom `TMPDIR`.
 
 ### Start an Ephemeral Diagnostics Session
 
@@ -71,27 +70,28 @@ Use the corresponding helper when the session also needs `vsdbg`:
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-debug
+  -ContainerName dotnet-debug `
+  -NoAttach
 ```
 
 An explicit container name is recommended for VS Code so `launch.json` can
-reference a stable value. Keep the attached shell running while VS Code uses
-`kubectl exec` to launch `/vsdbg/vsdbg`. The debug helper requests the
-`SYS_PTRACE` capability; restricted Pod Security, seccomp, or AppArmor policies
-can reject or block debugger attachment.
+reference a stable value. `-NoAttach` leaves the container's shell running while
+VS Code uses `kubectl exec` to launch `/vsdbg/vsdbg`. The debug helper runs as
+root and requests `SYS_PTRACE`; restricted Pod Security or AppArmor policies can
+reject or block debugger attachment.
 
 The script requires permission to read Pods, update
-`pods/ephemeralcontainers`, and create `pods/attach` requests. Reconnecting with
-the printed `kubectl exec` command also requires create permission on
-`pods/exec`. It fails before creating the container when the target container,
-shared `emptyDir` volume, volume mount, or direct
-`TMPDIR` socket-discovery configuration is missing. Existing workloads using
-`DOTNET_DiagnosticPorts=/diag/dotnet-diagnostic.sock,connect,nosuspend` remain
-supported. If configuration is supplied indirectly through `envFrom` or
-admission injection, use `-SkipSocketDiscoveryValidation`.
+`pods/ephemeralcontainers`, and create `pods/exec` requests. Interactive
+attachment additionally requires create permission on `pods/attach`; it is not
+needed with `-NoAttach`. The script fails before creating the container when
+the target container, shared `emptyDir` volume, or volume mount is missing.
+After startup it verifies that at least one accessible default .NET diagnostic
+socket can be prepared. Use `-SkipSocketDiscoveryValidation` only when you
+intentionally rely on an explicit `--diagnostic-port` workflow.
 
 Use `-WhatIf` to inspect the generated Pod payload without adding the
-ephemeral container.
+ephemeral container. Use `-NoAttach` to create and prepare the container without
+opening an interactive shell.
 
 The sample manifest in `examples/kubernetes/pod-with-diag-volume.yaml` shows the recommended static pod layout.
 
@@ -102,6 +102,9 @@ Use `diag` when you only need collection tools such as traces, dumps, counters, 
 Use `debug` when you need those same tools and also want to attach VS Code
 through `vsdbg`. `Start-DotnetDiagSession.ps1` defaults to the `diag` image;
 `Start-DotnetDebugSession.ps1` defaults to the `debug` image.
+The debug helper runs as root with `SYS_PTRACE` and an unconfined seccomp
+profile so `vsdbg` can attach. Cluster security policy can reject those
+settings.
 
 ## Common Commands
 
@@ -121,7 +124,8 @@ Start a VS Code-capable debug container with a stable name:
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-debug
+  -ContainerName dotnet-debug `
+  -NoAttach
 ```
 
 List automatically discoverable .NET processes:
