@@ -7,14 +7,15 @@ shown in `examples/kubernetes/pod-with-diag-volume.yaml`.
 
 `kubectl debug` does not add Pod volume mounts to an ephemeral container, and
 an ephemeral container cannot be patched after creation. Use the helper script
-to create the container with the `/diag` mount atomically and attach to it:
+to create the container with the `/diag` mount atomically and leave its primary
+shell running:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-diag
+  -NoAttach
 ```
 
 The script defaults to
@@ -22,18 +23,24 @@ The script defaults to
 `-VolumeName`, or `-MountPath` when the Pod uses different values.
 
 After the container starts, the script finds the target runtime's default
-socket through `/proc` and exposes it under `/diag`.
+socket through `/proc`, exposes it under `/diag`, and prints the generated
+container name and exact `kubectl exec` command for entering the session.
+Exiting that exec session leaves the ephemeral container running so artifacts
+can still be copied.
 
-To create and prepare the container without opening an interactive shell:
+To attach directly for a one-off session, omit `-NoAttach`:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
-  -Namespace default `
-  -ContainerName dotnet-diag `
-  -NoAttach
+  -Namespace default
 ```
+
+The attached shell is the container's primary process. Copy artifacts from
+another terminal before exiting it because an ephemeral container cannot be
+restarted. Do not reuse an explicit diagnostics container name for later
+sessions; omitting `-ContainerName` generates a unique name each time.
 
 ## Start A Debug Session
 
@@ -93,7 +100,10 @@ dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 ## Copy Artifacts Out Of The Pod
 
 ```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c dotnet-diag
-kubectl cp my-app:/diag/app.dmp ./app.dmp -c dotnet-diag
-kubectl cp my-app:/diag/app.gcdump ./app.gcdump -c dotnet-diag
+kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c <generated-container-name>
+kubectl cp my-app:/diag/app.dmp ./app.dmp -c <generated-container-name>
+kubectl cp my-app:/diag/app.gcdump ./app.gcdump -c <generated-container-name>
 ```
+
+Use the container name printed by the helper. With direct attachment, run these
+commands from another terminal before exiting the attached shell.

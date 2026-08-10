@@ -48,16 +48,25 @@ helper creates the container with the diagnostics volume mount already present;
 Kubernetes does not allow adding it after creation.
 
 Use the PowerShell helper to validate the Pod, create the fully configured
-ephemeral container through the `ephemeralcontainers` subresource, wait for it,
-and attach an interactive shell:
+ephemeral container through the `ephemeralcontainers` subresource, and leave
+its primary shell running:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-diag
+  -NoAttach
 ```
+
+The helper generates a unique container name and prints the exact
+`kubectl exec` command for entering it. Exiting that exec session does not stop
+the ephemeral container, so collected artifacts remain available to
+`kubectl cp`.
+
+For a one-off session, omit `-NoAttach` to attach directly. The attached shell
+is the container's primary process, so copy artifacts from another terminal
+before exiting it. An ephemeral container cannot be restarted.
 
 Use the corresponding helper when the session also needs `vsdbg`:
 
@@ -118,15 +127,19 @@ settings.
 
 ## Common Commands
 
-Start and attach an ephemeral diagnostics container:
+Start a reusable ephemeral diagnostics container:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
   -Pod my-app `
   -TargetContainer app `
   -Namespace default `
-  -ContainerName dotnet-diag
+  -NoAttach
 ```
+
+Use the generated container name and reconnect command printed by the helper.
+Omitting `-ContainerName` allows repeated sessions against the same Pod because
+each ephemeral container receives a unique name.
 
 Start a VS Code-capable debug container with a stable name:
 
@@ -166,8 +179,11 @@ dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 Copy artifacts to the local machine:
 
 ```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c dotnet-diag
+kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c <generated-container-name>
 ```
+
+When using direct attachment instead of `-NoAttach`, run `kubectl cp` from
+another terminal before exiting the attached shell.
 
 More command examples are in `examples/kubernetes/kubectl-debug.md`.
 
