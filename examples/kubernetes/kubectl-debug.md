@@ -42,6 +42,16 @@ another terminal before exiting it because an ephemeral container cannot be
 restarted. Do not reuse an explicit diagnostics container name for later
 sessions; omitting `-ContainerName` generates a unique name each time.
 
+An ephemeral container cannot be changed or removed after it is added to the
+Pod. Terminating its primary shell releases the running process resources, but
+the terminated, non-restartable container record remains until the Pod is
+deleted or replaced.
+
+The sample diagnostics `emptyDir: {}` uses node ephemeral storage, not RAM, and
+its files survive container termination. The files remain until they are
+explicitly deleted or the Pod is removed from the node. An `emptyDir` is
+RAM-backed only when it declares `medium: Memory`.
+
 ## Start A Debug Session
 
 Use the debug helper when the ephemeral container also needs `vsdbg`. Set a
@@ -99,11 +109,36 @@ dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 
 ## Copy Artifacts Out Of The Pod
 
-```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c <generated-container-name>
-kubectl cp my-app:/diag/app.dmp ./app.dmp -c <generated-container-name>
-kubectl cp my-app:/diag/app.gcdump ./app.gcdump -c <generated-container-name>
+Copy one explicit file or directory and remove only that remote path after the
+copy succeeds:
+
+```pwsh
+.\scripts\Copy-DotnetDiagArtifacts.ps1 `
+  -Pod my-app `
+  -ContainerName <generated-container-name> `
+  -Namespace default `
+  -RemotePath /diag/app.nettrace `
+  -Destination .\app.nettrace
 ```
 
-Use the container name printed by the helper. With direct attachment, run these
-commands from another terminal before exiting the attached shell.
+The destination must not already exist. The helper rejects `/diag` itself,
+paths outside the configured mount, and path traversal. It leaves unrelated
+socket links, debugger files, and artifacts untouched. Use `-MountPath` when
+the Pod uses a different diagnostics mount and `-WhatIf` to preview the
+operation.
+
+To copy and remove an artifact directory:
+
+```pwsh
+.\scripts\Copy-DotnetDiagArtifacts.ps1 `
+  -Pod my-app `
+  -ContainerName <generated-container-name> `
+  -RemotePath /diag/investigation-2026-08-11 `
+  -Destination .\investigation-2026-08-11
+```
+
+Add `-TerminateContainer` to exit the primary shell after the copy and cleanup
+finish. The container then releases its running process resources and cannot
+restart, while its immutable Pod record remains. Use the container name printed
+by the session helper. With direct attachment, run the copy helper from another
+terminal before exiting the attached shell.

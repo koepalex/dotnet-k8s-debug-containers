@@ -49,6 +49,8 @@ Use `debug` only when interactive debugging is actually needed.
 - Hardened seccomp or AppArmor profiles may block diagnostics or debugger operations
 - Different UIDs between the target process and the troubleshooting container may prevent attachment
 - The Pod must declare a writable diagnostics `emptyDir` with an appropriate `fsGroup`
+- Kubernetes does not allow an added ephemeral container to be changed, removed, or restarted; a terminated container releases its process resources, but its record remains until the Pod is replaced
+- The sample node-backed `emptyDir` keeps diagnostic files after container termination, so copy and explicitly remove artifacts that should not consume Pod ephemeral storage for the rest of the Pod lifetime
 
 ## Production Recommendation
 

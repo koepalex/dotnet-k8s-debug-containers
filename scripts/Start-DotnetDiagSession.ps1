@@ -381,9 +381,13 @@ catch {
 
 $execCommand = "kubectl exec -it --namespace $Namespace pod/$Pod --container $ContainerName -- $Shell"
 $processCommand = "kubectl exec --namespace $Namespace pod/$Pod --container $ContainerName -- /tools/dotnet-trace ps"
+$exampleArtifactPath = "$MountPath/app.nettrace".Replace("'", "''")
+$copyCommand = ".\scripts\Copy-DotnetDiagArtifacts.ps1 -Pod $Pod -ContainerName $ContainerName -Namespace $Namespace -RemotePath '$exampleArtifactPath' -Destination '.\app.nettrace'"
 Write-Host "Ephemeral container '$ContainerName' is running."
 Write-Host "Reconnect later with: $execCommand"
 Write-Host "List .NET processes with: $processCommand"
+Write-Host "Copy and remove an artifact with: $copyCommand"
+Write-Host 'Add -TerminateContainer to terminate the primary shell after a successful copy and cleanup.'
 
 if ($NoAttach) {
     return

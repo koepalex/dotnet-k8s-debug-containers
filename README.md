@@ -68,6 +68,17 @@ For a one-off session, omit `-NoAttach` to attach directly. The attached shell
 is the container's primary process, so copy artifacts from another terminal
 before exiting it. An ephemeral container cannot be restarted.
 
+<mark>Kubernetes does not allow an ephemeral container to be changed or removed after
+it is added. Its Pod API entry remains until the Pod is deleted or replaced.
+The container process can terminate, however; after termination it no longer
+uses process memory or CPU, but it cannot be started again.</mark>
+
+The diagnostics volume has a separate lifecycle. The sample uses
+`emptyDir: {}`, which is backed by node ephemeral storage rather than RAM and
+keeps its files across container termination. Its contents are deleted when the
+Pod is removed from the node, or they can be deleted explicitly after copying.
+Only an `emptyDir` configured with `medium: Memory` is RAM-backed.
+
 Use the corresponding helper when the session also needs `vsdbg`:
 
 ```pwsh
@@ -92,6 +103,11 @@ needed with `-NoAttach`. The script fails before creating the container when
 the target container or Pod-level `emptyDir` volume is missing.
 After startup it verifies that at least one accessible default .NET diagnostic
 socket can be prepared.
+
+`Copy-DotnetDiagArtifacts.ps1` requires Pod read and exec permissions.
+Its optional `-TerminateContainer` switch also requires attach permission
+because it exits the primary shell and confirms that the container reached a
+terminated state.
 
 Use `-WhatIf` to inspect the generated Pod payload without adding the
 ephemeral container. Use `-NoAttach` to create and prepare the container without
@@ -190,14 +206,28 @@ Collect a GC dump:
 dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 ```
 
-Copy artifacts to the local machine:
+Copy an artifact to the local machine and remove only that exact remote path
+after the copy succeeds:
 
-```sh
-kubectl cp my-app:/diag/app.nettrace ./app.nettrace -c <generated-container-name>
+```pwsh
+.\scripts\Copy-DotnetDiagArtifacts.ps1 `
+  -Pod my-app `
+  -ContainerName <generated-container-name> `
+  -Namespace default `
+  -RemotePath /diag/app.nettrace `
+  -Destination .\app.nettrace
 ```
 
-When using direct attachment instead of `-NoAttach`, run `kubectl cp` from
-another terminal before exiting the attached shell.
+The destination must not already exist. The helper rejects the diagnostics
+mount root and paths outside it, and it does not delete the remote file unless
+`kubectl cp` succeeds and creates the local destination. Use `-WhatIf` to
+preview the operation.
+
+Add `-TerminateContainer` to terminate the primary shell after successful copy
+and cleanup. This releases the running process resources but does not remove
+the immutable ephemeral-container record from the Pod. When using direct
+attachment instead of `-NoAttach`, run the helper from another terminal before
+exiting the attached shell.
 
 More command examples are in `examples/kubernetes/kubectl-debug.md`.
 
