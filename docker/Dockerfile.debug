@@ -26,9 +26,12 @@ ENV PATH="/tools:/vsdbg:${PATH}" \
 
 COPY --from=tooling /tools /tools
 COPY --from=tooling /vsdbg /vsdbg
+COPY docker/run-vsdbg.sh /vsdbg/run-vsdbg
 
 RUN tdnf install -y tar \
     && tdnf clean all \
+    && sed -i 's/\r$//' /vsdbg/run-vsdbg \
+    && chmod +x /vsdbg/run-vsdbg \
     && mkdir -p /diag \
     && chown 1654:0 /diag \
     && chmod g=u /diag

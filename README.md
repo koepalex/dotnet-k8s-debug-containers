@@ -104,15 +104,25 @@ The sample manifest in `examples/kubernetes/pod-with-diag-volume.yaml` shows the
 `examples/sample-app` contains the minimal .NET 10 target image used to verify
 the diagnostics and debugger workflows:
 
-```sh
-docker build \
-  -f examples/sample-app/Dockerfile \
-  -t dotnet-k8s-sample:local \
-  examples/sample-app
+```pwsh
+$env:SOURCE_REVISION_ID = git rev-parse HEAD
+docker buildx bake `
+  --file .\examples\sample-app\docker-bake.hcl
 ```
+
+The Bake definition loads `dotnet-k8s-sample:local` and exports the exact
+portable PDB produced with its Release DLL to
+`artifacts/sample-app/symbols`. The final runtime image does not contain the
+PDB.
 
 Publish that image to a registry accessible by the cluster and use it as the
 `app` image in `examples/kubernetes/pod-with-diag-volume.yaml`.
+
+For VS Code attach, archive the original PDB from the application build, tie it
+to the immutable application image digest, and keep the exact source commit
+available locally. The sample workflow publishes downloadable symbol bundles
+for this purpose. See `docs/vscode-attach.md` for the complete Release-symbol
+workflow.
 
 ## Diag vs Debug
 
@@ -123,7 +133,11 @@ through `vsdbg`. `Start-DotnetDiagSession.ps1` defaults to the `diag` image;
 `Start-DotnetDebugSession.ps1` defaults to the `debug` image.
 The debug helper runs as root with `SYS_PTRACE` and an unconfined seccomp
 profile so `vsdbg` can attach. Cluster security policy can reject those
-settings.
+settings. The application must separately preserve the exact portable PDBs
+produced with the deployed Release binaries; the debugger rejects mismatched
+symbols. The debug image starts `vsdbg` through `/vsdbg/run-vsdbg`, which maps
+the debugger IPC temp directory into the target container's filesystem through
+`/proc`.
 
 ## Common Commands
 
