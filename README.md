@@ -47,9 +47,9 @@ application container does not mount `/diag`.
 helper creates the container with the diagnostics volume mount already present;
 Kubernetes does not allow adding it after creation.
 
-Use the PowerShell helper to validate the Pod, create the fully configured
-ephemeral container through the `ephemeralcontainers` subresource, and leave
-its primary shell running:
+Use the PowerShell or Bash helper to validate the Pod, create the fully
+configured ephemeral container through the `ephemeralcontainers` subresource,
+and leave its primary shell running:
 
 ```pwsh
 .\scripts\Start-DotnetDiagSession.ps1 `
@@ -59,14 +59,22 @@ its primary shell running:
   -NoAttach
 ```
 
+```sh
+./scripts/Start-DotnetDiagSession.sh \
+  --pod my-app \
+  --target-container app \
+  --namespace default \
+  --no-attach
+```
+
 The helper generates a unique container name and prints the exact
 `kubectl exec` command for entering it. Exiting that exec session does not stop
 the ephemeral container, so collected artifacts remain available to
 `kubectl cp`.
 
-For a one-off session, omit `-NoAttach` to attach directly. The attached shell
-is the container's primary process, so copy artifacts from another terminal
-before exiting it. An ephemeral container cannot be restarted.
+For a one-off session, omit `-NoAttach` or `--no-attach` to attach directly.
+The attached shell is the container's primary process, so copy artifacts from
+another terminal before exiting it. An ephemeral container cannot be restarted.
 
 <mark>Kubernetes does not allow an ephemeral container to be changed or removed after
 it is added. Its Pod API entry remains until the Pod is deleted or replaced.
@@ -90,28 +98,38 @@ Use the corresponding helper when the session also needs `vsdbg`:
   -NoAttach
 ```
 
-An explicit container name is recommended for VS Code so `launch.json` can
-reference a stable value. `-NoAttach` leaves the container's shell running while
-VS Code uses `kubectl exec` to launch `/vsdbg/vsdbg`. The debug helper runs as
-root and requests `SYS_PTRACE`; restricted Pod Security or AppArmor policies can
-reject or block debugger attachment.
+```sh
+./scripts/Start-DotnetDebugSession.sh \
+  --pod my-app \
+  --target-container app \
+  --namespace default \
+  --container-name dotnet-debug \
+  --no-attach
+```
 
-The script requires permission to read Pods, update
+An explicit container name is recommended for VS Code so `launch.json` can
+reference a stable value. `-NoAttach` or `--no-attach` leaves the container's
+shell running while VS Code uses `kubectl exec` to launch `/vsdbg/vsdbg`. The
+debug helper runs as root and requests `SYS_PTRACE`; restricted Pod Security or
+AppArmor policies can reject or block debugger attachment.
+
+The session helpers require permission to read Pods, update
 `pods/ephemeralcontainers`, and create `pods/exec` requests. Interactive
 attachment additionally requires create permission on `pods/attach`; it is not
-needed with `-NoAttach`. The script fails before creating the container when
-the target container or Pod-level `emptyDir` volume is missing.
+needed with `-NoAttach` or `--no-attach`. The helpers fail before creating the
+container when the target container or Pod-level `emptyDir` volume is missing.
 After startup it verifies that at least one accessible default .NET diagnostic
 socket can be prepared.
 
-`Copy-DotnetDiagArtifacts.ps1` requires Pod read and exec permissions.
-Its optional `-TerminateContainer` switch also requires attach permission
-because it exits the primary shell and confirms that the container reached a
-terminated state.
+The PowerShell and Bash `Copy-DotnetDiagArtifacts` helpers require Pod read and
+exec permissions. Their optional termination switch also requires attach
+permission because it exits the primary shell and confirms that the container
+reached a terminated state.
 
-Use `-WhatIf` to inspect the generated Pod payload without adding the
-ephemeral container. Use `-NoAttach` to create and prepare the container without
-opening an interactive shell.
+Use `-WhatIf` in PowerShell or `--what-if` in Bash to inspect the generated Pod
+payload without adding the ephemeral container. Use `-NoAttach` or
+`--no-attach` to create and prepare the container without opening an
+interactive shell. The Bash helpers require Bash 4+, `kubectl`, and `jq`.
 
 The sample manifest in `examples/kubernetes/pod-with-diag-volume.yaml` shows the recommended static pod layout.
 
@@ -145,8 +163,8 @@ workflow.
 Use `diag` when you only need collection tools such as traces, dumps, counters, GC dumps, or stack snapshots.
 
 Use `debug` when you need those same tools and also want to attach VS Code
-through `vsdbg`. `Start-DotnetDiagSession.ps1` defaults to the `diag` image;
-`Start-DotnetDebugSession.ps1` defaults to the `debug` image.
+through `vsdbg`. Both `Start-DotnetDiagSession` scripts default to the `diag`
+image; both `Start-DotnetDebugSession` scripts default to the `debug` image.
 The debug helper runs as root with `SYS_PTRACE` and an unconfined seccomp
 profile so `vsdbg` can attach. Cluster security policy can reject those
 settings. The application must separately preserve the exact portable PDBs
@@ -167,6 +185,14 @@ Start a reusable ephemeral diagnostics container:
   -NoAttach
 ```
 
+```sh
+./scripts/Start-DotnetDiagSession.sh \
+  --pod my-app \
+  --target-container app \
+  --namespace default \
+  --no-attach
+```
+
 Use the generated container name and reconnect command printed by the helper.
 Omitting `-ContainerName` allows repeated sessions against the same Pod because
 each ephemeral container receives a unique name.
@@ -180,6 +206,15 @@ Start a VS Code-capable debug container with a stable name:
   -Namespace default `
   -ContainerName dotnet-debug `
   -NoAttach
+```
+
+```sh
+./scripts/Start-DotnetDebugSession.sh \
+  --pod my-app \
+  --target-container app \
+  --namespace default \
+  --container-name dotnet-debug \
+  --no-attach
 ```
 
 List automatically discoverable .NET processes:
@@ -206,6 +241,42 @@ Collect a GC dump:
 dotnet-gcdump collect --process-id <pid> --output /diag/app.gcdump
 ```
 
+### Create And Download A Dump In Unattached Mode
+
+Start the diagnostics container with `--no-attach`. The helper prints the
+generated container name and a reconnect command. Use that name in the
+following commands:
+
+```sh
+# List the target .NET processes without opening an interactive shell.
+kubectl exec \
+  --namespace default \
+  pod/my-app \
+  --container <generated-container-name> \
+  -- /tools/dotnet-trace ps
+
+# Create the dump in the diagnostics volume.
+kubectl exec \
+  --namespace default \
+  pod/my-app \
+  --container <generated-container-name> \
+  -- /tools/dotnet-dump collect \
+     --process-id <pid> \
+     --output /diag/app.dmp
+
+# Copy the dump to the current Linux machine and remove the remote file.
+./scripts/Copy-DotnetDiagArtifacts.sh \
+  --pod my-app \
+  --container-name <generated-container-name> \
+  --namespace default \
+  --remote-path /diag/app.dmp \
+  --destination ./app.dmp
+```
+
+The copy helper verifies that `./app.dmp` was created before deleting
+`/diag/app.dmp`. The destination must not already exist. Add
+`--terminate-container` when the diagnostics session is no longer needed.
+
 Copy an artifact to the local machine and remove only that exact remote path
 after the copy succeeds:
 
@@ -218,16 +289,25 @@ after the copy succeeds:
   -Destination .\app.nettrace
 ```
 
+```sh
+./scripts/Copy-DotnetDiagArtifacts.sh \
+  --pod my-app \
+  --container-name <generated-container-name> \
+  --namespace default \
+  --remote-path /diag/app.nettrace \
+  --destination ./app.nettrace
+```
+
 The destination must not already exist. The helper rejects the diagnostics
 mount root and paths outside it, and it does not delete the remote file unless
-`kubectl cp` succeeds and creates the local destination. Use `-WhatIf` to
-preview the operation.
+`kubectl cp` succeeds and creates the local destination. Use `-WhatIf` or
+`--what-if` to preview the operation.
 
-Add `-TerminateContainer` to terminate the primary shell after successful copy
-and cleanup. This releases the running process resources but does not remove
-the immutable ephemeral-container record from the Pod. When using direct
-attachment instead of `-NoAttach`, run the helper from another terminal before
-exiting the attached shell.
+Add `-TerminateContainer` or `--terminate-container` to terminate the primary
+shell after successful copy and cleanup. This releases the running process
+resources but does not remove the immutable ephemeral-container record from the
+Pod. When using direct attachment instead of `-NoAttach` or `--no-attach`, run
+the helper from another terminal before exiting the attached shell.
 
 More command examples are in `examples/kubernetes/kubectl-debug.md`.
 
